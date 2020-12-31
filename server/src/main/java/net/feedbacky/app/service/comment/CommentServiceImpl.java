@@ -1,14 +1,6 @@
 package net.feedbacky.app.service.comment;
 
 import net.feedbacky.app.config.UserAuthenticationToken;
-import net.feedbacky.app.data.idea.subscribe.SubscriptionDataBuilder;
-import net.feedbacky.app.data.idea.subscribe.SubscriptionExecutor;
-import net.feedbacky.app.exception.FeedbackyRestException;
-import net.feedbacky.app.exception.types.InvalidAuthenticationException;
-import net.feedbacky.app.exception.types.ResourceNotFoundException;
-import net.feedbacky.app.repository.UserRepository;
-import net.feedbacky.app.repository.idea.CommentRepository;
-import net.feedbacky.app.repository.idea.IdeaRepository;
 import net.feedbacky.app.data.board.moderator.Moderator;
 import net.feedbacky.app.data.board.webhook.Webhook;
 import net.feedbacky.app.data.board.webhook.WebhookDataBuilder;
@@ -17,11 +9,20 @@ import net.feedbacky.app.data.idea.comment.Comment;
 import net.feedbacky.app.data.idea.dto.comment.FetchCommentDto;
 import net.feedbacky.app.data.idea.dto.comment.PatchCommentDto;
 import net.feedbacky.app.data.idea.dto.comment.PostCommentDto;
+import net.feedbacky.app.data.idea.subscribe.SubscriptionDataBuilder;
+import net.feedbacky.app.data.idea.subscribe.SubscriptionExecutor;
 import net.feedbacky.app.data.user.User;
 import net.feedbacky.app.data.user.dto.FetchUserDto;
+import net.feedbacky.app.exception.FeedbackyRestException;
+import net.feedbacky.app.exception.types.InvalidAuthenticationException;
+import net.feedbacky.app.exception.types.ResourceNotFoundException;
+import net.feedbacky.app.repository.UserRepository;
+import net.feedbacky.app.repository.idea.CommentRepository;
+import net.feedbacky.app.repository.idea.IdeaRepository;
 import net.feedbacky.app.service.ServiceUser;
 import net.feedbacky.app.util.PaginableRequest;
 import net.feedbacky.app.util.RequestValidator;
+import net.feedbacky.app.util.SortFilterResolver;
 
 import org.apache.commons.text.StringEscapeUtils;
 import org.modelmapper.Conditions;
@@ -29,13 +30,11 @@ import org.modelmapper.ModelMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -52,6 +51,7 @@ public class CommentServiceImpl implements CommentService {
   private final IdeaRepository ideaRepository;
   private final UserRepository userRepository;
   private final SubscriptionExecutor subscriptionExecutor;
+  private final boolean closedIdeasCommenting = Boolean.parseBoolean(System.getenv("SETTINGS_ALLOW_COMMENTING_CLOSED_IDEAS"));
 
   @Autowired
   public CommentServiceImpl(CommentRepository commentRepository, IdeaRepository ideaRepository, UserRepository userRepository, SubscriptionExecutor subscriptionExecutor) {
@@ -62,7 +62,7 @@ public class CommentServiceImpl implements CommentService {
   }
 
   @Override
-  public PaginableRequest<List<FetchCommentDto>> getAllForIdea(long ideaId, int page, int pageSize) {
+  public PaginableRequest<List<FetchCommentDto>> getAllForIdea(long ideaId, int page, int pageSize, SortType sortType) {
     User user = null;
     if(SecurityContextHolder.getContext().getAuthentication() instanceof UserAuthenticationToken) {
       UserAuthenticationToken auth = (UserAuthenticationToken) SecurityContextHolder.getContext().getAuthentication();
@@ -70,7 +70,7 @@ public class CommentServiceImpl implements CommentService {
     }
     Idea idea = ideaRepository.findById(ideaId)
             .orElseThrow(() -> new ResourceNotFoundException("Idea with id " + ideaId + " does not exist."));
-    Page<Comment> pageData = commentRepository.findByIdea(idea, PageRequest.of(page, pageSize, Sort.by("id").ascending()));
+    Page<Comment> pageData = commentRepository.findByIdea(idea, PageRequest.of(page, pageSize, SortFilterResolver.resolveCommentsSorting(sortType)));
     List<Comment> comments = pageData.getContent();
     int totalPages = pageData.getTotalElements() == 0 ? 0 : pageData.getTotalPages() - 1;
     final User finalUser = user;
@@ -110,6 +110,9 @@ public class CommentServiceImpl implements CommentService {
     if(Comment.ViewType.valueOf(dto.getType().toUpperCase()) == Comment.ViewType.INTERNAL && !isModerator) {
       throw new FeedbackyRestException(HttpStatus.BAD_REQUEST, "No permission to post comment with internal view type.");
     }
+    if(idea.getStatus() == Idea.IdeaStatus.CLOSED && !closedIdeasCommenting) {
+      throw new FeedbackyRestException(HttpStatus.BAD_REQUEST, "Cannot comment closed ideas.");
+    }
     Comment comment = new ModelMapper().map(this, Comment.class);
     comment.setId(null);
     comment.setIdea(idea);
@@ -130,7 +133,8 @@ public class CommentServiceImpl implements CommentService {
       WebhookDataBuilder webhookBuilder = new WebhookDataBuilder().withUser(user).withIdea(idea).withComment(comment);
       idea.getBoard().getWebhookExecutor().executeWebhooks(Webhook.Event.IDEA_COMMENT, webhookBuilder.build());
 
-      if(isModerator) {
+      //notify only if moderator and not author of the idea
+      if(isModerator && !idea.getCreator().equals(user)) {
         SubscriptionDataBuilder subscribeBuilder = new SubscriptionDataBuilder().withUser(user).withComment(comment).withIdea(idea);
         subscriptionExecutor.notifySubscribers(idea, SubscriptionExecutor.Event.IDEA_BY_MODERATOR_COMMENT, subscribeBuilder.build());
       }

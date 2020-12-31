@@ -7,12 +7,12 @@ const AppContext = React.createContext({
         onLogOut: () => {},
     },
     serviceData: [],
-    onFilteringUpdate: () => {},
-    onSortingUpdate: () => {},
+    onLocalPreferencesUpdate: () => {},
     onDarkModeToggle: () => {},
     getTheme: () => {},
     theme: "#343a40",
     onThemeChange: () => {},
+    hardResetData: () => {},
     clientVersion: ""
 });
 

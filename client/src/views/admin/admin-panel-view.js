@@ -15,13 +15,14 @@ import SocialLinksSettings from "views/admin/subviews/social/social-links-settin
 import CreateSocialLink from "views/admin/subviews/social/create-social-link";
 import CreateWebhook from "views/admin/subviews/webhooks/create-webhook";
 import BoardContext from "context/board-context";
+import SuspensionSettings from "views/admin/subviews/suspensions-settings";
 
 const AdminPanelView = () => {
     const context = useContext(AppContext);
     const {id} = useParams();
     const location = useLocation();
     const history = useHistory();
-    const [board, setBoard] = useState({data: [], loaded: false, error: false});
+    const [board, setBoard] = useState({data: {}, loaded: false, error: false});
     useEffect(() => {
         if (location.state == null) {
             axios.get("/boards/" + id).then(res => {
@@ -62,7 +63,12 @@ const AdminPanelView = () => {
         history.push("/b/" + id);
         return <React.Fragment/>;
     }
-    return <BoardContext.Provider value={{data: board.data, loaded: board.loaded, error: board.error}}>
+    return <BoardContext.Provider value={{
+        data: board.data, loaded: board.loaded, error: board.error,
+        updateSuspensions: (suspendedUsers) => {
+            setBoard({...board, data: {...board.data, suspendedUsers}});
+        }
+    }}>
         <IdeaNavbar/>
         <Container>
             <Row className="justify-content-center pb-4">
@@ -73,6 +79,7 @@ const AdminPanelView = () => {
                     <Route path="/ba/:id/webhooks" render={() => <WebhooksSettings reRouteTo={reRouteTo}/>}/>
                     <Route path="/ba/:id/social/create" render={() => <CreateSocialLink reRouteTo={reRouteTo} data={board.data}/>}/>
                     <Route path="/ba/:id/social" render={() => <SocialLinksSettings reRouteTo={reRouteTo}/>}/>
+                    <Route path="/ba/:id/suspended" render={() => <SuspensionSettings reRouteTo={reRouteTo}/>}/>
                     <Route path="/ba/:id/general" render={() => <GeneralSettings reRouteTo={reRouteTo} updateState={(data) => setBoard({...board, data})}/>}/>
                     <Route render={() => <GeneralSettings reRouteTo={reRouteTo} updateState={(data) => setBoard({...board, data})}/>}/>
                 </Switch>

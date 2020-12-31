@@ -1,30 +1,27 @@
-import React, {Suspense, useContext, useState} from 'react';
+import React, {useContext, useState} from 'react';
 import Form from "react-bootstrap/Form";
 import Button from "react-bootstrap/Button";
 import axios from "axios";
 import {formatRemainingCharacters, toastError, toastSuccess, toastWarning} from "components/util/utils";
 import AppContext from "context/app-context";
-import LoadingSpinner from "components/util/loading-spinner";
 import PageModal from "components/modal/page-modal";
 import ClickableTip from "components/util/clickable-tip";
-import {ChromePicker} from "react-color";
 import {Col, Row} from "react-bootstrap";
-import tinycolor from "tinycolor2";
-import {FaExclamationCircle} from "react-icons/all";
+import ColorSelectionHelper from "components/modal/color-selection-helper";
+import ExecutableButton from "components/app/executable-button";
 
 const TagCreateModal = (props) => {
     const context = useContext(AppContext);
     const [color, setColor] = useState("#0994f6");
-    const colorWarning = tinycolor.readability(color, "#fff") < 2.0 || tinycolor.readability(tinycolor(color).lighten(10), "#292c30") < 2.0;
 
     const handleSubmit = () => {
         const name = document.getElementById("tagNameTextarea").value;
         if (name.length < 3 || name.length > 20) {
             toastWarning("Tag name must be between 3 and 20 characters.");
-            return;
+            return Promise.resolve();
         }
         const roadmapIgnored = document.getElementById("roadmapIgnored").checked;
-        axios.post("/boards/" + props.data.discriminator + "/tags", {
+        return axios.post("/boards/" + props.data.discriminator + "/tags", {
             name, color, roadmapIgnored,
         }).then(res => {
             if (res.status !== 200 && res.status !== 201) {
@@ -36,9 +33,8 @@ const TagCreateModal = (props) => {
             toastSuccess("Tag with name " + name + " created.");
         }).catch(err => toastError(err.response.data.errors[0]));
     };
-    const textClass = colorWarning ? "text-danger" : "text-black-60";
     return <PageModal id="tagCreate" isOpen={props.open} onHide={props.onTagCreateModalClose} title="Add new Tag"
-                      applyButton={<Button variant="" type="submit" style={{backgroundColor: context.getTheme()}} onClick={handleSubmit} className="mx-0">Save</Button>}>
+                      applyButton={<ExecutableButton variant=""  style={{backgroundColor: context.getTheme()}} onClick={handleSubmit} className="mx-0">Save</ExecutableButton>}>
         <Row>
             <Col xs={12} className="mt-2 mb-1">
                 <Form.Label className="mr-1 text-black-60">Tag Name</Form.Label>
@@ -50,14 +46,7 @@ const TagCreateModal = (props) => {
                 </Form.Text>
             </Col>
             <Col xs={12} sm={6} className="mb-2">
-                <Form.Label className={"mr-1 " + textClass}>Tag Color</Form.Label>
-                <ClickableTip id="tagColor" title="Tag Color" description="Choose color of the tag. Avoid too bright and too dark colors, poorly visible in Light and Dark Themes."/>
-                {!colorWarning || <ClickableTip id="colorWarn" title="Color Warning" description="This color is considered either too dark or too bright and might look bad on Light or Dark Mode."
-                                                icon={<FaExclamationCircle className="fa-xs text-danger move-top-1px ml-1"/>}/>}
-                <br/>
-                <Suspense fallback={<LoadingSpinner/>}>
-                    <ChromePicker className="text-center" disableAlpha color={color} onChangeComplete={changedColor => setColor(changedColor.hex)}/>
-                </Suspense>
+                <ColorSelectionHelper title="Tag Color" color={color} setColor={setColor} colorWarning={true}/>
             </Col>
             <Col xs={12} sm={6} className="mb-2">
                 <Form.Label className="mr-1 text-black-60">Ignore Roadmap</Form.Label>

@@ -3,6 +3,7 @@ import Spinner from "react-bootstrap/Spinner";
 import {FaFrown} from "react-icons/all";
 import AppContext from "context/app-context";
 import {PageAvatar} from "components/app/page-avatar";
+import {OverlayTrigger, Tooltip} from "react-bootstrap";
 
 const VotersComponent = ({votersAmount, data}) => {
     const context = useContext(AppContext);
@@ -11,7 +12,7 @@ const VotersComponent = ({votersAmount, data}) => {
             const voters = votersAmount > 5 ? 5 : votersAmount;
             let spinners = [];
             for (let i = 0; i < voters; i++) {
-                spinners.push(<Spinner key={i} animation="grow" variant="" className="merged" style={{
+                spinners.push(<Spinner key={i} animation="grow" variant="" className="voter-merged" style={{
                     verticalAlign: "text-bottom", margin: "0 -10px 0 0", width: 23, height: 23, color: context.getTheme()
                 }}/>);
             }
@@ -26,9 +27,14 @@ const VotersComponent = ({votersAmount, data}) => {
         if (data.error) {
             return <div className="text-danger"><FaFrown className="move-top-2px"/> Failed to load</div>
         }
+        if(data.data.length === 0) {
+            return <div style={{height: 25}}><FaFrown className="move-top-2px"/> None</div>
+        }
         return <div>
             {data.data.slice(0, 5).map(data => {
-                return <PageAvatar key={data.id} className="merged" circle url={data.avatar} size={25}/>
+                return <OverlayTrigger key={data.id} overlay={<Tooltip id={"voterData" + data.id}>{data.username}</Tooltip>}>
+                    <PageAvatar className="voter-merged" roundedCircle url={data.avatar} size={25} username={data.username}/>
+                </OverlayTrigger>
             })}
             {renderAndMore()}
         </div>

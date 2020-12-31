@@ -1,9 +1,9 @@
-import React, {useContext, useState} from 'react';
-import {Button, Col, Row} from "react-bootstrap";
+import React, {useContext, useEffect, useRef, useState} from 'react';
+import {Button, Col, Dropdown, Row} from "react-bootstrap";
 import axios from "axios";
 import LoadingSpinner from "components/util/loading-spinner";
 import {FaFrown} from "react-icons/fa";
-import {formatUsername, toastError, toastSuccess, toastWarning} from "components/util/utils";
+import {formatUsername, getDefaultAvatar, prepareFilterAndSortRequests, toastAwait, toastError, toastSuccess, toastWarning} from "components/util/utils";
 import AppContext from "context/app-context";
 import InfiniteScroll from "react-infinite-scroller";
 import TextareaAutosize from 'react-autosize-textarea';
@@ -13,14 +13,34 @@ import {ReactComponent as UndrawNoData} from "assets/svg/undraw/no_data.svg";
 import CommentComponent from "components/idea/discussion/comment-component";
 import {SvgNotice} from "components/app/svg-notice";
 import {PageAvatar} from "components/app/page-avatar";
+import {FaAngleDown} from "react-icons/all";
+import BoardContext from "context/board-context";
 
-const DiscussionBox = ({ideaData, updateState, moderators}) => {
+const DiscussionBox = ({ideaData, updateState, onNotLoggedClick}) => {
     const context = useContext(AppContext);
+    const boardContext = useContext(BoardContext);
     const [comments, setComments] = useState({data: [], loaded: false, error: false, moreToLoad: true, page: 0});
     const [submitOpen, setSubmitOpen] = useState(false);
-    const onLoadRequest = (page) => {
-        return axios.get("/ideas/" + ideaData.id + "/comments?page=" + (page - 1)).then(res => {
-            setComments({...comments, data: comments.data.concat(res.data.data), loaded: true, moreToLoad: res.data.pageMetadata.currentPage < res.data.pageMetadata.pages, page});
+    const sorts = [
+        {oldest: "Oldest"},
+        {newest: "Newest"}
+    ];
+    const isInitialMount = useRef(true);
+    useEffect(() => {
+        if(isInitialMount.current) {
+            isInitialMount.current = false;
+        } else {
+            onLoadRequest(1, true);
+        }
+        // eslint-disable-next-line
+    }, [context.user.localPreferences]);
+    const onLoadRequest = (page, override) => {
+        return axios.get("/ideas/" + ideaData.id + "/comments?page=" + (page - 1) + prepareFilterAndSortRequests(context.user.localPreferences.comments)).then(res => {
+            if(override) {
+                setComments({...comments, data: res.data.data, loaded: true, moreToLoad: res.data.pageMetadata.currentPage < res.data.pageMetadata.pages, page});
+            } else {
+                setComments({...comments, data: comments.data.concat(res.data.data), loaded: true, moreToLoad: res.data.pageMetadata.currentPage < res.data.pageMetadata.pages, page});
+            }
         }).catch(() => setComments({...comments, loaded: true, error: true}));
     };
     const renderComments = () => {
@@ -34,7 +54,8 @@ const DiscussionBox = ({ideaData, updateState, moderators}) => {
             hasMore={comments.moreToLoad}
             loader={<Row className="justify-content-center my-5" key={comments.data.length}><LoadingSpinner/></Row>}>
             {comments.data.map(data =>
-                <CommentComponent key={data.id} data={data} onCommentDelete={onCommentDelete} onCommentLike={onCommentLike} onCommentUnlike={onCommentUnlike}/>
+                <CommentComponent key={data.id} data={data} onCommentDelete={onCommentDelete} onCommentLike={onCommentLike}
+                                  onCommentUnlike={onCommentUnlike} onSuspend={onSuspend}/>
             )}
         </InfiniteScroll>
     };
@@ -48,17 +69,18 @@ const DiscussionBox = ({ideaData, updateState, moderators}) => {
         return <React.Fragment/>
     };
     const renderCommentBox = () => {
-        if (!ideaData.open) {
+        if (!ideaData.open && !context.serviceData.closedIdeasCommenting) {
             return;
         }
         if (context.user.loggedIn) {
             return <div className="d-inline-flex mb-2 col-10 px-0" style={{wordBreak: "break-word"}}>
                 <div className="text-center mr-3 pt-2">
-                    <PageAvatar circle size={30} url={context.user.data.avatar}/>
+                    <PageAvatar roundedCircle size={30} url={context.user.data.avatar} username={context.user.data.username}/>
                     <br/>
                 </div>
                 <div className="col-12 px-0">
-                    <small style={{fontWeight: "bold"}}>{formatUsername(context.user.data.id, context.user.data.username, moderators)}</small>
+                    <small style={{fontWeight: "bold"}}>{formatUsername(context.user.data.id, context.user.data.username,
+                        boardContext.data.moderators, boardContext.data.suspendedUsers)}</small>
                     <br/>
                     <TextareaAutosize className="form-control mt-1" id="commentMessage" rows={1} maxRows={5} placeholder="Write a comment..."
                                       style={{resize: "none", overflow: "hidden"}} onChange={onCommentBoxKeyUp}/>
@@ -66,13 +88,24 @@ const DiscussionBox = ({ideaData, updateState, moderators}) => {
                 </div>
             </div>
         }
-        return <React.Fragment/>
+        return <div className="d-inline-flex mb-2 col-10 px-0" style={{wordBreak: "break-word"}}>
+            <div className="text-center mr-3 pt-2">
+                <PageAvatar roundedCircle size={30} url={getDefaultAvatar("Anonymous")}/>
+                <br/>
+            </div>
+            <div className="col-12 px-0">
+                <small style={{fontWeight: "bold"}}>{formatUsername(-1, "Anonymous", [])}</small>
+                <br/>
+                <TextareaAutosize className="form-control mt-1" id="commentMessage" rows={1} maxRows={5} placeholder="Write a comment..."
+                                  style={{resize: "none", overflow: "hidden"}} onChange={onNotLoggedClick} onClick={onNotLoggedClick}/>
+            </div>
+        </div>
     };
     const renderSubmitButton = () => {
         if (!submitOpen) {
             return <React.Fragment/>
         }
-        const moderator = moderators.find(mod => mod.userId === context.user.data.id);
+        const moderator = boardContext.data.moderators.find(mod => mod.userId === context.user.data.id);
         return <React.Fragment>
             <Button variant="" className="mt-2 ml-0 mb-0" style={{backgroundColor: context.getTheme(), fontSize: "0.75em"}}
                     onClick={() => onCommentSubmit(false)}>Submit</Button>
@@ -100,7 +133,13 @@ const DiscussionBox = ({ideaData, updateState, moderators}) => {
                 toastError();
                 return;
             }
-            setComments({...comments, data: [...comments.data, res.data]});
+            if(context.user.localPreferences.comments.sort === "newest") {
+                const newData = comments.data;
+                newData.unshift(res.data);
+                setComments({...comments, data: newData});
+            } else {
+                setComments({...comments, data: [...comments.data, res.data]});
+            }
             setSubmitOpen(false);
             document.getElementById("commentMessage").value = "";
             updateState({...ideaData, commentsAmount: ideaData.commentsAmount + 1});
@@ -121,9 +160,31 @@ const DiscussionBox = ({ideaData, updateState, moderators}) => {
             setSubmitOpen(false);
         }
     };
+    const onSuspend = (commentData) => {
+        popupSwal("warning", "Dangerous action", "Suspended users cannot post new ideas and upvote/downvote ideas unless unsuspended through board admin panel.",
+            "Suspend", "#d33", willClose => {
+                if (!willClose.value) {
+                    return;
+                }
+                //todo finite suspension dates
+                const date = new Date();
+                const id = toastAwait("Pending suspension...");
+                axios.post("/boards/" + boardContext.data.discriminator + "/suspendedUsers", {
+                    userId: commentData.user.id,
+                    suspensionEndDate: (date.getFullYear() + 10) + "-" + (date.getMonth() + 1) + "-" + date.getDate()
+                }).then(res => {
+                    if (res.status !== 201) {
+                        toastError("Failed to suspend the user.", id);
+                        return;
+                    }
+                    toastSuccess("User suspended.", id);
+                    boardContext.updateSuspensions(boardContext.data.suspendedUsers.concat(res.data));
+                }).catch(err => toastError(err.response.data.errors[0]));
+            });
+    };
     const onCommentDelete = (id) => {
         popupSwal("warning", "Dangerous action",
-            "This action is <strong>irreversible</strong> and will delete your comment, please confirm your action.",
+            "This action is <strong>irreversible</strong> and will delete this comment, please confirm your action.",
             "Delete Comment", "#d33", willClose => {
                 if (!willClose.value) {
                     return;
@@ -140,6 +201,10 @@ const DiscussionBox = ({ideaData, updateState, moderators}) => {
             });
     };
     const onCommentLike = (data) => {
+        if(!context.user.loggedIn) {
+            onNotLoggedClick();
+            return;
+        }
         axios.post("/comments/" + data.id + "/likers", {}).then(res => {
             if (res.status !== 200) {
                 toastWarning("Failed to like comment.");
@@ -158,6 +223,10 @@ const DiscussionBox = ({ideaData, updateState, moderators}) => {
         });
     };
     const onCommentUnlike = (data) => {
+        if(!context.user.loggedIn) {
+            onNotLoggedClick();
+            return;
+        }
         axios.delete("/comments/" + data.id + "/likers").then(res => {
             if (res.status !== 204) {
                 toastWarning("Failed to unlike comment.");
@@ -175,7 +244,24 @@ const DiscussionBox = ({ideaData, updateState, moderators}) => {
         });
     };
     return <Col xs={12}>
-        <span className="text-black-75">Discussion ({ideaData.commentsAmount} comments)</span>
+        <div>
+            <div className="d-inline-block text-black-75 mr-1">Discussion ({ideaData.commentsAmount} comments)</div>
+            <Dropdown className="d-inline-block" style={{zIndex: 1}}>
+                <Dropdown.Toggle id="sort" variant="" className="search-dropdown-bar btn btn-link text-dark move-top-1px">
+                <span>{Object.values(sorts.find(obj => {
+                    return Object.keys(obj)[0] === (context.user.localPreferences.comments.sort || "oldest");
+                }))}</span>
+                    <FaAngleDown/>
+                </Dropdown.Toggle>
+                <Dropdown.Menu alignRight>
+                    {sorts.map(val => {
+                        const key = Object.keys(val)[0];
+                        const value = Object.values(val)[0];
+                        return <Dropdown.Item key={key} onClick={() => context.onLocalPreferencesUpdate({...context.user.localPreferences, comments: {...context.user.localPreferences.comments, sort: key}})}>{value}</Dropdown.Item>
+                    })}
+                </Dropdown.Menu>
+            </Dropdown>
+        </div>
         <Col xs={12} sm={10} md={6} className="p-0 mb-1 mt-1" id="commentBox">
             {renderCommentBox()}
             {renderNoDataImage()}

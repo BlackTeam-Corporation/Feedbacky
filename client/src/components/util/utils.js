@@ -4,6 +4,21 @@ import {FaCheck, FaExclamation, FaExclamationTriangle} from "react-icons/fa";
 import Spinner from "react-bootstrap/Spinner";
 import {parseEmojis} from "components/util/emoji-filter";
 import marked from "marked";
+import Cookies from "js-cookie";
+import {FaBan} from "react-icons/all";
+
+export const getDefaultAvatar = (username) => {
+    const avatar = process.env.REACT_APP_DEFAULT_USER_AVATAR;
+    return avatar.replace("%nick%", username);
+};
+
+export const getCookieOrDefault = (name, defaultValue) => {
+    const cookie = Cookies.get(name);
+    if (cookie == null) {
+        return defaultValue;
+    }
+    return cookie;
+};
 
 export const convertIdeaToSlug = (ideaData) => {
     let slug = ideaData.title.toLowerCase();
@@ -87,7 +102,11 @@ export const truncateText = (text, maxLength) => {
     return text.substring(0, maxLength) + "...";
 };
 
-export const formatUsername = (userId, userName, moderators = []) => {
+export const formatUsername = (userId, userName, moderators = [], suspended = []) => {
+    const isSuspended = suspended.find(suspended => suspended.user.id === userId);
+    if (isSuspended) {
+        return <span className="board-role suspended"><FaBan className="fa-xs move-top-1px"/> {userName}</span>
+    }
     const user = moderators.find(mod => mod.userId === userId);
     if (user == null) {
         return userName;
@@ -104,13 +123,13 @@ export const formatUsername = (userId, userName, moderators = []) => {
     }
 };
 
-export const prepareFilterAndSortRequests = (searchPreferences) => {
+export const prepareFilterAndSortRequests = (preferences) => {
     let search = "";
-    if (searchPreferences.sort != null) {
-        search += "&sort=" + searchPreferences.sort;
+    if (preferences.sort != null) {
+        search += "&sort=" + preferences.sort;
     }
-    if (searchPreferences.filter != null) {
-        search += "&filter=" + searchPreferences.filter;
+    if (preferences.filter != null) {
+        search += "&filter=" + preferences.filter;
     }
     return search;
 };
