@@ -1,10 +1,11 @@
 package net.feedbacky.app.data.board;
 
 import lombok.AllArgsConstructor;
+import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import net.feedbacky.app.data.board.dto.FetchBoardDto;
+import net.feedbacky.app.data.board.changelog.Changelog;
 import net.feedbacky.app.data.board.invite.Invitation;
 import net.feedbacky.app.data.board.moderator.Moderator;
 import net.feedbacky.app.data.board.social.SocialLink;
@@ -16,7 +17,8 @@ import net.feedbacky.app.data.tag.Tag;
 import net.feedbacky.app.data.user.User;
 
 import org.hibernate.annotations.CreationTimestamp;
-import org.modelmapper.ModelMapper;
+import org.hibernate.annotations.LazyToOne;
+import org.hibernate.annotations.LazyToOneOption;
 
 import javax.persistence.CascadeType;
 import javax.persistence.Column;
@@ -27,6 +29,8 @@ import javax.persistence.GenerationType;
 import javax.persistence.Id;
 import javax.persistence.ManyToMany;
 import javax.persistence.ManyToOne;
+import javax.persistence.NamedAttributeNode;
+import javax.persistence.NamedEntityGraph;
 import javax.persistence.OneToMany;
 import javax.persistence.Table;
 import javax.persistence.Transient;
@@ -36,7 +40,6 @@ import java.util.Date;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
  * @author Plajer
@@ -49,27 +52,37 @@ import java.util.stream.Collectors;
 @Setter
 @AllArgsConstructor
 @NoArgsConstructor
+@EqualsAndHashCode(onlyExplicitlyIncluded = true)
+@NamedEntityGraph(name = "Board.fetch", attributeNodes = {
+        @NamedAttributeNode("creator"), @NamedAttributeNode("ideas"),
+        @NamedAttributeNode("moderators"), @NamedAttributeNode("tags"),
+        @NamedAttributeNode("socialLinks"), @NamedAttributeNode("suspensedList")})
 public class Board implements Serializable {
 
-  @Transient private final transient WebhookExecutor webhookExecutor = new WebhookExecutor(this);
+  @Transient
+  private final transient WebhookExecutor webhookExecutor = new WebhookExecutor(this);
+
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
+  @EqualsAndHashCode.Include
   private Long id;
   private String name;
   private String discriminator;
   private String shortDescription;
   @Column(name = "full_description", columnDefinition = "text", length = 65_535)
   private String fullDescription;
-  @ManyToOne
+  @ManyToOne(fetch = FetchType.LAZY)
+  @LazyToOne(LazyToOneOption.NO_PROXY)
   private User creator;
   @CreationTimestamp
   private Date creationDate;
   private String themeColor;
   private String logo;
   private String banner;
+  private String apiKey = "";
   @OneToMany(fetch = FetchType.LAZY, cascade = CascadeType.ALL, mappedBy = "board")
   private Set<Idea> ideas = new LinkedHashSet<>();
-  @OneToMany(fetch = FetchType.EAGER, cascade = CascadeType.ALL, mappedBy = "board", orphanRemoval = true)
+  @OneToMany(fetch = FetchType.LAZY, cascade = CascadeType.ALL, mappedBy = "board", orphanRemoval = true)
   private Set<Moderator> moderators = new HashSet<>();
   @OneToMany(fetch = FetchType.LAZY, cascade = CascadeType.ALL, mappedBy = "board")
   private Set<Invitation> invitedModerators = new HashSet<>();
@@ -81,14 +94,7 @@ public class Board implements Serializable {
   private Set<SocialLink> socialLinks = new HashSet<>();
   @ManyToMany(fetch = FetchType.LAZY)
   private Set<SuspendedUser> suspensedList = new HashSet<>();
-
-  public FetchBoardDto convertToDto() {
-    FetchBoardDto dto = new ModelMapper().map(this, FetchBoardDto.class);
-    dto.setSocialLinks(getSocialLinks().stream().map(SocialLink::convertToDto).collect(Collectors.toList()));
-    dto.setTags(getTags().stream().map(Tag::convertToDto).collect(Collectors.toList()));
-    dto.setModerators(getModerators().stream().map(Moderator::convertToModeratorDto).collect(Collectors.toList()));
-    dto.setSuspendedUsers(getSuspensedList().stream().map(SuspendedUser::convertToDto).collect(Collectors.toList()));
-    return dto;
-  }
+  private Set<Changelog> changelogs = new HashSet<>();
+  private boolean anonymousAllowed = true;
 
 }

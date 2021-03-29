@@ -1,0 +1,10 @@
+// Dark Mode overrides for main.scss
+
+.dark {
+  background-color: var(--dark-background);
+  color: var(--dark-font-color);
+
+  small {
+    color: var(--dark-font-color) !important;
+  }
+}
